@@ -4,8 +4,6 @@
 
 #define BUFFER_SIZE 16
 
-// 修复：这里虽然用了 strncpy 防止溢出，但引入了新 Bug：没有手动加 '\0' 字符串结束符
-// 新增 Bug 1：字符串缺少终止符导致 printf 越界乱码（潜在缓冲区溢出/越界读取）
 void process_user_input(const char* input) {
     char* local_buf = (char*)malloc(BUFFER_SIZE);
     
@@ -13,30 +11,34 @@ void process_user_input(const char* input) {
         return;
     }
 
-    // 修复了 strcpy，改用 strncpy
     strncpy(local_buf, input, BUFFER_SIZE);
     
-    // ⚠️ 新 Bug 2：数组越界写入（Off-by-one）
-    // 假设我们想强制最后一个字节为安全终止符，但写错了索引：BUFFER_SIZE 对应的下标是 16（越界了，有效下标是 0-15）
-    local_buf[BUFFER_SIZE] = 'X'; 
+    // ✅ 修复：将越界写入 local_buf[BUFFER_SIZE] 改为正确的最后一个字节手动加结束符
+    local_buf[BUFFER_SIZE - 1] = '\0'; 
 
     printf("Processed input: %s\n", local_buf);
     
-    // 修复：补上了 free，消除了内存泄漏
     free(local_buf);
 }
 
 void risky_pointer_operation() {
-    int *ptr = NULL; // 修复了未初始化野指针
+    int *ptr = NULL;
     
     if (rand() % 2 == 0) {
         ptr = (int*)malloc(sizeof(int));
         *ptr = 42;
+    } else {
+        // 故意引入新 Bug 1：如果分支没走 malloc，但后面却错误地执行了 free 或者没有正确初始化
+        // 或者更隐蔽的：引入一个内存泄漏（当随机数满足条件时申请了内存，但忘记 free 且没有指针保存好，或者如下的双重释放/悬空指针风险）
     }
     
-    if (ptr != NULL) { // 修复了空指针直接解引用
+    if (ptr != NULL) {
         printf("Value is: %d\n", *ptr);
-        free(ptr); // 修复了内存泄漏
+        free(ptr);
+        
+        // ⚠️ 新增 Bug：悬空指针二次释放 (Double Free 风险/或逻辑错误)
+        // 假设我们在后面又错误地 free 了一次
+        free(ptr); 
     }
 }
 
