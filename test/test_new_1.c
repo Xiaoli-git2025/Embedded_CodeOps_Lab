@@ -4,8 +4,8 @@
 
 #define BUFFER_SIZE 16
 
-// 缺陷 1：缓冲区溢出风险 (strcpy 没有长度限制)
-// 缺陷 2：内存泄漏 (动态申请的内存未释放)
+// 修复：这里虽然用了 strncpy 防止溢出，但引入了新 Bug：没有手动加 '\0' 字符串结束符
+// 新增 Bug 1：字符串缺少终止符导致 printf 越界乱码（潜在缓冲区溢出/越界读取）
 void process_user_input(const char* input) {
     char* local_buf = (char*)malloc(BUFFER_SIZE);
     
@@ -13,34 +13,37 @@ void process_user_input(const char* input) {
         return;
     }
 
-    // 危险操作：如果 input 长度大于 15，会直接导致栈/堆旁边的内存被踩踏溢出
-    strcpy(local_buf, input);
+    // 修复了 strcpy，改用 strncpy
+    strncpy(local_buf, input, BUFFER_SIZE);
     
+    // ⚠️ 新 Bug 2：数组越界写入（Off-by-one）
+    // 假设我们想强制最后一个字节为安全终止符，但写错了索引：BUFFER_SIZE 对应的下标是 16（越界了，有效下标是 0-15）
+    local_buf[BUFFER_SIZE] = 'X'; 
+
     printf("Processed input: %s\n", local_buf);
     
-    // 漏掉了 free(local_buf); 导致内存泄漏！
+    // 修复：补上了 free，消除了内存泄漏
+    free(local_buf);
 }
 
-// 缺陷 3：空指针解引用 / 未初始化变量
 void risky_pointer_operation() {
-    int *ptr; // 未初始化，里面是野指针地址
+    int *ptr = NULL; // 修复了未初始化野指针
     
-    // 随机判断，可能导致程序崩溃或非法内存访问
     if (rand() % 2 == 0) {
         ptr = (int*)malloc(sizeof(int));
         *ptr = 42;
     }
     
-    // 危险：如果上面 rand() 结果不走分支，ptr 就是野指针，这里直接解引用会崩
-    printf("Value is: %d\n", *ptr);
-    
-    // 漏掉了 free(ptr)
+    if (ptr != NULL) { // 修复了空指针直接解引用
+        printf("Value is: %d\n", *ptr);
+        free(ptr); // 修复了内存泄漏
+    }
 }
 
 int main() {
-    printf("Starting vulnerable embedded routine...\n");
+    printf("Starting modified embedded routine...\n");
     
-    process_user_input("This string is way too long for the tiny buffer!");
+    process_user_input("Test input");
     risky_pointer_operation();
     
     return 0;
